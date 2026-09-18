@@ -1,0 +1,6 @@
+defaultBaseImage: cgr.dev/chainguard/static:latest
+builds:
+  - id: rinex-tools
+    main: ./cmd/rinex-tools
+    ldflags:
+      - -s -w
