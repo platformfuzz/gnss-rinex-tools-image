@@ -36,7 +36,9 @@ func TestAnalyzeFixture(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	check.WriteReport(&buf, r)
+	if err := check.WriteReport(&buf, r); err != nil {
+		t.Fatalf("WriteReport: %v", err)
+	}
 	out := buf.String()
 	for _, want := range []string{"file:", "RESULT: WEAK/CHECK", "epochs: 3"} {
 		if !strings.Contains(out, want) {
@@ -104,7 +106,9 @@ func TestAnalyzeOKThreshold(t *testing.T) {
 func TestWriteReportFail(t *testing.T) {
 	r := check.Analyze("", 0, "empty.rnx")
 	var buf bytes.Buffer
-	check.WriteReport(&buf, r)
+	if err := check.WriteReport(&buf, r); err != nil {
+		t.Fatalf("WriteReport: %v", err)
+	}
 	if !strings.Contains(buf.String(), "FAIL:") {
 		t.Fatalf("report=%s", buf.String())
 	}

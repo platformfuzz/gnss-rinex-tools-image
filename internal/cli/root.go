@@ -32,10 +32,14 @@ func newCheckCmd(stdout, stderr io.Writer) *cobra.Command {
 			path := args[0]
 			r, err := check.AnalyzeFile(path)
 			if err != nil {
-				fmt.Fprintln(stderr, err.Error())
+				if _, werr := fmt.Fprintln(stderr, err.Error()); werr != nil {
+					return werr
+				}
 				os.Exit(check.ExitCode(nil, err))
 			}
-			check.WriteReport(stdout, r)
+			if err := check.WriteReport(stdout, r); err != nil {
+				return err
+			}
 			code := check.ExitCode(r, nil)
 			if code != 0 {
 				os.Exit(code)

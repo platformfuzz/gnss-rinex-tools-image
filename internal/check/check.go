@@ -45,7 +45,8 @@ func AnalyzeFile(path string) (*Result, error) {
 		}
 		return nil, err
 	}
-	data, err := os.ReadFile(path)
+	// Path comes from the CLI user; intentional local file read.
+	data, err := os.ReadFile(path) //nolint:gosec // G304: caller-provided RINEX path
 	if err != nil {
 		return nil, err
 	}
@@ -69,17 +70,7 @@ func Analyze(text string, sizeBytes int64, fileName string) *Result {
 		return r
 	}
 
-	var verLine string
-	end := -1
-	for i, line := range lines {
-		if strings.Contains(line, "RINEX VERSION / TYPE") {
-			verLine = line
-		}
-		if strings.Contains(line, "END OF HEADER") {
-			end = i
-			break
-		}
-	}
+	verLine, end := findHeaderBounds(lines)
 	r.VersionLine = strings.TrimSpace(verLine)
 	if verLine == "" {
 		r.VersionLine = "MISSING"
@@ -95,22 +86,46 @@ func Analyze(text string, sizeBytes int64, fileName string) *Result {
 		return r
 	}
 
-	hdr := lines[:end+1]
-	for _, key := range headerKeys {
-		for _, line := range hdr {
-			if strings.Contains(line, key) {
-				display := line
-				if len(display) > 72 {
-					display = display[:72] + "..."
-				}
-				r.HeaderFields[key] = display
-				break
-			}
+	fillHeaderFields(r, lines[:end+1])
+	fillBodyStats(r, lines[end+1:])
+	_, hasG := r.ObsLinesBySystem["G"]
+	r.OK = sizeBytes > 100_000 && r.Epochs >= 60 && hasG
+	return r
+}
+
+func findHeaderBounds(lines []string) (verLine string, end int) {
+	end = -1
+	for i, line := range lines {
+		if strings.Contains(line, "RINEX VERSION / TYPE") {
+			verLine = line
+		}
+		if strings.Contains(line, "END OF HEADER") {
+			end = i
+			break
 		}
 	}
+	return verLine, end
+}
 
-	var epochs []string
-	for _, line := range lines[end+1:] {
+func fillHeaderFields(r *Result, hdr []string) {
+	for _, key := range headerKeys {
+		for _, line := range hdr {
+			if !strings.Contains(line, key) {
+				continue
+			}
+			display := line
+			if len(display) > 72 {
+				display = display[:72] + "..."
+			}
+			r.HeaderFields[key] = display
+			break
+		}
+	}
+}
+
+func fillBodyStats(r *Result, body []string) {
+	epochs := make([]string, 0, 64)
+	for _, line := range body {
 		if strings.HasPrefix(line, ">") {
 			epochs = append(epochs, line)
 			continue
@@ -126,10 +141,6 @@ func Analyze(text string, sizeBytes int64, fileName string) *Result {
 		r.FirstEpoch = truncate(epochs[0], 60)
 		r.LastEpoch = truncate(epochs[len(epochs)-1], 60)
 	}
-
-	_, hasG := r.ObsLinesBySystem["G"]
-	r.OK = sizeBytes > 100_000 && r.Epochs >= 60 && hasG
-	return r
 }
 
 func truncate(s string, n int) string {
@@ -140,33 +151,52 @@ func truncate(s string, n int) string {
 }
 
 // WriteReport prints a human-readable QC summary to w.
-func WriteReport(w io.Writer, r *Result) {
-	fmt.Fprintf(w, "file: %s\n", r.FileName)
-	fmt.Fprintf(w, "size_bytes: %d\n", r.SizeBytes)
-	fmt.Fprintf(w, "version_line: %s\n", r.VersionLine)
+func WriteReport(w io.Writer, r *Result) error {
+	if _, err := fmt.Fprintf(w, "file: %s\n", r.FileName); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "size_bytes: %d\n", r.SizeBytes); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "version_line: %s\n", r.VersionLine); err != nil {
+		return err
+	}
 	if r.FailReason != "" {
-		fmt.Fprintf(w, "FAIL: %s\n", r.FailReason)
-		return
+		_, err := fmt.Fprintf(w, "FAIL: %s\n", r.FailReason)
+		return err
 	}
 	for _, key := range headerKeys {
 		val, ok := r.HeaderFields[key]
 		if !ok {
-			fmt.Fprintf(w, "hdr[%s]: None\n", key)
+			if _, err := fmt.Fprintf(w, "hdr[%s]: None\n", key); err != nil {
+				return err
+			}
 			continue
 		}
-		fmt.Fprintf(w, "hdr[%s]: %s\n", key, val)
+		if _, err := fmt.Fprintf(w, "hdr[%s]: %s\n", key, val); err != nil {
+			return err
+		}
 	}
-	fmt.Fprintf(w, "epochs: %d\n", r.Epochs)
+	if _, err := fmt.Fprintf(w, "epochs: %d\n", r.Epochs); err != nil {
+		return err
+	}
 	if r.Epochs > 0 {
-		fmt.Fprintf(w, "first_epoch: %s\n", r.FirstEpoch)
-		fmt.Fprintf(w, "last_epoch:  %s\n", r.LastEpoch)
+		if _, err := fmt.Fprintf(w, "first_epoch: %s\n", r.FirstEpoch); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "last_epoch:  %s\n", r.LastEpoch); err != nil {
+			return err
+		}
 	}
-	fmt.Fprintf(w, "obs_lines_by_system: %s\n", formatSystems(r.ObsLinesBySystem))
+	if _, err := fmt.Fprintf(w, "obs_lines_by_system: %s\n", formatSystems(r.ObsLinesBySystem)); err != nil {
+		return err
+	}
 	if r.OK {
-		fmt.Fprintln(w, "RESULT: OK")
-	} else {
-		fmt.Fprintln(w, "RESULT: WEAK/CHECK")
+		_, err := fmt.Fprintln(w, "RESULT: OK")
+		return err
 	}
+	_, err := fmt.Fprintln(w, "RESULT: WEAK/CHECK")
+	return err
 }
 
 func formatSystems(m map[string]int) string {
