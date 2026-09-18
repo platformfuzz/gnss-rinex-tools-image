@@ -1,0 +1,12 @@
+# Binaries
+/rinex-tools
+/tmp/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Local ko / docker leftovers
+*.tar
