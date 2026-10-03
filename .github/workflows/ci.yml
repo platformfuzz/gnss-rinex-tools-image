@@ -30,7 +30,7 @@ jobs:
       go-version: "1.26"
 
   govulncheck:
-    uses: actionsforge/actions-govulncheck/.github/workflows/govulncheck.yml@v0.0.10
+    uses: actionsforge/actions-govulncheck/.github/workflows/govulncheck.yml@v0.0.11
     with:
       go-version: "1.26"
 
